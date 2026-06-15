@@ -23,3 +23,5 @@ dist/
 build/
 .next/
 coverage/
+
+./frontend/node_modules/
