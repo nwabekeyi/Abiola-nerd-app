@@ -141,7 +141,7 @@ export function AdminLayout() {
             <>
               {tab === 'overview'      && overview && <OverviewPanel overview={overview} analytics={dailyAnalytics} />}
               {tab === 'links'         && <WorkerLinksPanel links={links} reload={loadDashboard} onChangePage={changeLinksPage} />}
-              {tab === 'registrations' && <RegistrationsPanel registrations={registrations} links={links.items} reload={loadDashboard} onChangePage={changeRegistrationsPage} />}
+              {tab === 'registrations' && <RegistrationsPanel registrations={registrations} links={links.items ?? []} reload={loadDashboard} onChangePage={changeRegistrationsPage} />}
               {tab === 'settings'      && <SettingsPanel fee={fee} setFee={setFee} />}
             </>
           )}
@@ -577,7 +577,7 @@ function RegistrationsPanel({
             style={{ maxWidth: '240px' }}
           >
             <option value="">All workers</option>
-            {links.items.map((link) => (
+            {links.map((link) => (
               <option key={link._id} value={link._id}>{link.workerFullName}</option>
             ))}
           </select>
