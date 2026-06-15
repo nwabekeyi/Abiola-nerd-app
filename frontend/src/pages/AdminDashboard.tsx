@@ -23,6 +23,22 @@ type Page<T> = {
   pages: number;
 };
 
+type Tab = 'overview' | 'links' | 'registrations' | 'settings';
+
+type DailyAnalytics = {
+  month: string;
+  enrollmentsSeries: Array<{ date: string; enrollments: number; workers: number; paymentAmount: number }>;
+  paymentStatusData: Array<{ name: string; value: number }>;
+  totals: { enrollments: number; workers: number; revenue: number };
+};
+
+const EMPTY_DAILY_ANALYTICS: DailyAnalytics = {
+  month: '',
+  enrollmentsSeries: [],
+  paymentStatusData: [],
+  totals: { enrollments: 0, workers: 0, revenue: 0 },
+};
+
 export function AdminLayout() {
   const [token, setToken] = useState(localStorage.getItem('token'));
   const [tab, setTab] = useState<Tab>('overview');
@@ -31,17 +47,7 @@ export function AdminLayout() {
   const [links, setLinks] = useState<Page<WorkerLink>>({ items: [], total: 0, page: 1, limit: 20, pages: 0 });
   const [registrations, setRegistrations] = useState<Page<Registration>>({ items: [], total: 0, page: 1, limit: 20, pages: 0 });
   const [fee, setFee] = useState(0);
-  const [dailyAnalytics, setDailyAnalytics] = useState<{
-    month: string;
-    enrollmentsSeries: Array<{ date: string; enrollments: number; workers: number; paymentAmount: number }>;
-    paymentStatusData: Array<{ name: string; value: number }>;
-    totals: { enrollments: number; workers: number; revenue: number };
-  }>({
-    month: '',
-    enrollmentsSeries: [],
-    paymentStatusData: [],
-    totals: { enrollments: 0, workers: 0, revenue: 0 },
-  });
+  const [dailyAnalytics, setDailyAnalytics] = useState<DailyAnalytics>(EMPTY_DAILY_ANALYTICS);
   const [loading, setLoading] = useState(true);
 
   async function loadDashboard() {
@@ -52,13 +58,13 @@ export function AdminLayout() {
         api<Page<WorkerLink>>('/admin/links?page=1&limit=20'),
         api<Page<Registration>>('/admin/registrations?page=1&limit=20'),
         api<{ amount: number }>('/admin/settings/fee'),
-        getDailyAnalytics(),
+        getDailyAnalytics<DailyAnalytics>(),
       ]);
       setOverview(overviewData);
       setLinks(linkData);
       setRegistrations(registrationData);
       setFee(feeData.amount);
-      setDailyAnalytics(analyticsData as typeof dailyAnalytics);
+      setDailyAnalytics(analyticsData);
     } catch {
       if (!localStorage.getItem('token')) setToken(null);
     } finally {
@@ -66,9 +72,10 @@ export function AdminLayout() {
     }
   }
 
-  async function changeLinksPage(page: number, limit = links.limit) {
-    const qs = new URLSearchParams({ page: String(page), limit: String(limit) }).toString();
-    const data = await api<Page<WorkerLink>>(`/admin/links?${qs}`);
+  async function changeLinksPage(page: number, limit = links.limit, search = '') {
+    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (search.trim()) qs.set('search', search.trim());
+    const data = await api<Page<WorkerLink>>(`/admin/links?${qs.toString()}`);
     setLinks(data);
   }
 
@@ -132,7 +139,7 @@ export function AdminLayout() {
             <Skeleton />
           ) : (
             <>
-              {tab === 'overview'      && overview && <OverviewPanel overview={overview} />}
+              {tab === 'overview'      && overview && <OverviewPanel overview={overview} analytics={dailyAnalytics} />}
               {tab === 'links'         && <WorkerLinksPanel links={links} reload={loadDashboard} onChangePage={changeLinksPage} />}
               {tab === 'registrations' && <RegistrationsPanel registrations={registrations} links={links.items} reload={loadDashboard} onChangePage={changeRegistrationsPage} />}
               {tab === 'settings'      && <SettingsPanel fee={fee} setFee={setFee} />}
@@ -141,6 +148,8 @@ export function AdminLayout() {
         </main>
       </div>
     </>
+  );
+}
 function Login({ onLogin }: { onLogin: (token: string) => void }) {
   const [email, setEmail] = useState('admin@nerd.local');
   const [password, setPassword] = useState('');
@@ -201,7 +210,7 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
 }
 
 /* ─── Overview ───────────────────────────────────────────────────────────── */
-function OverviewPanel({ overview, analytics }: { overview: Overview; analytics: typeof dailyAnalytics }) {
+function OverviewPanel({ overview, analytics }: { overview: Overview; analytics: DailyAnalytics }) {
   const chartHeight = 320;
 
   return (
@@ -311,7 +320,7 @@ function WorkerLinksPanel({
 }: {
   links: Page<WorkerLink>;
   reload: () => Promise<void>;
-  onChangePage: (page: number) => Promise<void>;
+  onChangePage: (page: number, limit?: number, search?: string) => Promise<void>;
 }) {
   const [workerFullName, setWorkerFullName] = useState('');
   const [workerSearch, setWorkerSearch] = useState('');
@@ -322,9 +331,7 @@ function WorkerLinksPanel({
     : links.items;
 
   const applySearch = async () => {
-    const q = new URLSearchParams({ page: '1', limit: String(links.limit) });
-    if (workerSearch.trim()) q.set('search', workerSearch.trim());
-    await onChangePage(1);
+    await onChangePage(1, links.limit, workerSearch);
   };
 
   async function createLink(e: React.FormEvent) {
@@ -353,7 +360,7 @@ function WorkerLinksPanel({
   }
 
   async function downloadPdf(linkId: string) {
-    const link = links.find((l) => l._id === linkId);
+    const link = links.items.find((l) => l._id === linkId);
     if (!link) return;
 
     let passcode = '';
@@ -430,15 +437,18 @@ function WorkerLinksPanel({
           <input
             value={workerSearch}
             onChange={(e) => setWorkerSearch(e.target.value)}
+            onKeyDown={async (e) => {
+              if (e.key === 'Enter') await applySearch();
+            }}
             placeholder="Search workers by name"
             style={{ maxWidth: '280px' }}
           />
+          <button className="secondary" type="button" onClick={applySearch}>Search</button>
           <select
             value={links.limit}
             onChange={async (e) => {
               const limit = Number(e.target.value);
-              setLinks((p) => ({ ...p, limit, page: 1 }));
-              await onChangePage(1);
+              await onChangePage(1, limit, workerSearch);
             }}
             style={{ maxWidth: '120px' }}
           >
@@ -522,7 +532,7 @@ function RegistrationsPanel({
   onChangePage,
 }: {
   registrations: Page<Registration>;
-  links: Page<WorkerLink>;
+  links: WorkerLink[];
   reload: () => Promise<void>;
   onChangePage: (page: number) => Promise<void>;
 }) {
