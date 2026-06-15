@@ -1,4 +1,4 @@
-export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api';
+export const API_URL = 'http://localhost:4000/api';
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('token');
@@ -13,9 +13,19 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Request failed' }));
-    throw new Error(error.message);
+    const text = await response.text();
+    let error;
+    try {
+      error = JSON.parse(text);
+    } catch {
+      error = { message: text || 'Request failed' };
+    }
+    throw error;
   }
 
   return response.json();
+}
+
+export async function getDailyAnalytics<T = unknown>() {
+  return api<T>('/admin/analytics/daily');
 }

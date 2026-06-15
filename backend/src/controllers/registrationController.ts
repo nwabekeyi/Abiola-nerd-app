@@ -9,6 +9,7 @@ import { Registration } from '../models/Registration.js';
 import { Setting } from '../models/Setting.js';
 import { uploadDocument } from '../services/cloudinary.js';
 import { initializePaystack, verifyPaystack } from '../services/paystack.js';
+import { recomputeAnalytics } from '../services/analytics.js';
 
 const referenceGenerator = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 18);
 
@@ -87,7 +88,16 @@ export async function submitRegistration(req: Request, res: Response) {
     return res.status(400).json({ message: error instanceof Error ? error.message : 'Registration failed' });
   } finally {
     await session.endSession();
+    recomputeAnalytics().catch(() => {});
   }
+}
+
+export async function verifyPaymentStatus(req: Request, res: Response) {
+  const reference = String(req.query.reference || '');
+  const payment = await Payment.findOne({ reference });
+  if (!payment) return res.status(404).json({ message: 'Payment not found' });
+  const verified = await verifyPaystack(payment.reference);
+  return res.json({ status: verified.status, reference: payment.reference });
 }
 
 export async function workerRegistrations(req: Request, res: Response) {

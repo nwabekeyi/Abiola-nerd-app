@@ -17,7 +17,7 @@ export async function seedAdmin() {
 export async function login(req: Request, res: Response) {
   const admin = await Admin.findOne({ email: req.body.email });
 
-  if (!admin || !(await bcrypt.compare(req.body.password, admin.passwordHash))) {
+  if (!admin || !admin.passwordHash || !(await bcrypt.compare(req.body.password, admin.passwordHash))) {
     return res.status(401).json({ message: 'Invalid credentials' });
   }
 

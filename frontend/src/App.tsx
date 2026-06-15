@@ -1,6 +1,7 @@
-import { AdminDashboard } from './pages/AdminDashboard';
+import { AdminLayout } from './pages/AdminDashboard';
 import { RegistrationPage } from './pages/RegistrationPage';
 
 export function App() {
-  return location.pathname.startsWith('/register/') ? <RegistrationPage /> : <AdminDashboard />;
+  if (location.pathname.startsWith('/register/')) return <RegistrationPage />;
+  return <AdminLayout />;
 }

@@ -10,11 +10,11 @@ export type Overview = {
 export type WorkerLink = {
   _id: string;
   workerFullName: string;
-  slug: string;
   url: string;
   isRevoked: boolean;
   registrationCount: number;
   createdAt: string;
+  passcode?: string;
 };
 
 export type DocumentRecord = {

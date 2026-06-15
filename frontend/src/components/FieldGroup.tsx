@@ -11,7 +11,7 @@ export function FieldGroup({ title, fields, prefix }: Props) {
     <>
       <h2>{title}</h2>
       {fields.map(([name, label]) => (
-        <label key={`${prefix ?? 'root'}-${name}`}>
+        <label key={`${prefix ?? 'root'}-${name}`} style={{ marginBottom: '0.75rem' }}>
           {label}
           <input
             id={!prefix ? name : undefined}
