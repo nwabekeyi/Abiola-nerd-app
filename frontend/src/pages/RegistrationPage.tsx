@@ -19,9 +19,22 @@ type PublicLink = {
 
 type PaymentResponse = {
   reference: string;
-  authorization_url?: string;
-  access_code?: string;
+  access_code: string;
+  authorization_url: string;
+  amount: number;
 };
+
+type PaystackPopup = {
+  resumeTransaction: (accessCode: string) => void;
+};
+
+declare global {
+  interface Window {
+    PaystackPop?: new () => PaystackPopup;
+  }
+}
+
+const PAYSTACK_INLINE_SCRIPT_URL = 'https://js.paystack.co/v2/inline.js';
 
 const STORAGE_KEY = 'nerd_registration_draft';
 
@@ -71,13 +84,17 @@ export function RegistrationPage() {
         body: JSON.stringify({ email })
       });
 
-      setPollingReference(payment.reference);
+      await loadPaystackInlineScript();
 
-      if (payment.authorization_url) {
-        window.location.href = payment.authorization_url;
-      } else {
-        setPaymentReference(payment.reference);
-      }
+      if (!window.PaystackPop) throw new Error('Paystack checkout could not be loaded');
+      if (!payment.access_code) throw new Error('Payment access code was not returned');
+
+      setPollingReference(payment.reference);
+      setPaymentReference(payment.reference);
+      setPaymentStatus('pending');
+
+      const popup = new window.PaystackPop();
+      popup.resumeTransaction(payment.access_code);
     } catch (error) {
       alert(formatApiError(error));
     }
@@ -308,4 +325,25 @@ function formatApiError(error: unknown) {
   }
 
   return 'Request failed. Please try again.';
+}
+
+function loadPaystackInlineScript() {
+  if (window.PaystackPop) return Promise.resolve();
+
+  const existingScript = document.querySelector<HTMLScriptElement>(`script[src="${PAYSTACK_INLINE_SCRIPT_URL}"]`);
+  if (existingScript) {
+    return new Promise<void>((resolve, reject) => {
+      existingScript.addEventListener('load', () => resolve(), { once: true });
+      existingScript.addEventListener('error', () => reject(new Error('Unable to load Paystack checkout')), { once: true });
+    });
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = PAYSTACK_INLINE_SCRIPT_URL;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Unable to load Paystack checkout'));
+    document.body.appendChild(script);
+  });
 }

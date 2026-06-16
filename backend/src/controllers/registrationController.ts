@@ -23,24 +23,28 @@ export async function getPublicLink(req: Request, res: Response) {
 }
 
 export async function initializePayment(req: Request, res: Response) {
-  const link = await RegistrationLink.findOne({ slug: req.params.slug, isRevoked: false });
+  try {
+    const link = await RegistrationLink.findOne({ slug: req.params.slug, isRevoked: false });
 
-  if (!link) return res.status(400).json({ message: 'Registration link is revoked or invalid' });
+    if (!link) return res.status(400).json({ message: 'Registration link is revoked or invalid' });
 
-  const fee = await Setting.findOne({ key: 'registrationFee' });
-  const amount = Number(fee?.value?.amount || 0);
-  const reference = referenceGenerator();
+    const fee = await Setting.findOne({ key: 'registrationFee' });
+    const amount = Number(fee?.value?.amount || 0);
+    const reference = referenceGenerator();
 
-  await Payment.create({ link: link.id, email: req.body.email, amount, reference });
+    const payment = await initializePaystack(
+      req.body.email,
+      amount,
+      reference,
+      `${env.appUrl}/register/${link.slug}/payment`
+    );
 
-  const payment = await initializePaystack(
-    req.body.email,
-    amount,
-    reference,
-    `${env.appUrl}/register/${link.slug}/payment`
-  );
+    await Payment.create({ link: link.id, email: req.body.email, amount, reference: payment.reference || reference });
 
-  return res.json({ reference, ...payment });
+    return res.json({ amount, reference: payment.reference || reference, ...payment });
+  } catch (error) {
+    return res.status(400).json({ message: error instanceof Error ? error.message : 'Payment initialization failed' });
+  }
 }
 
 export async function submitRegistration(req: Request, res: Response) {
