@@ -61,21 +61,25 @@ export function RegistrationPage() {
     return () => clearInterval(timer);
   }, [pollingReference, slug]);
 
-  const emailFieldId = slug ? `emailAddress_${slug}` : 'emailAddress';
+  const emailFieldId = 'emailAddress';
 
   async function initializePayment() {
-    const email = ((document.getElementById(emailFieldId) as HTMLInputElement | null)?.value ?? '').trim();
-    const payment = await api<PaymentResponse>(`/links/${slug}/payments`, {
-      method: 'POST',
-      body: JSON.stringify({ email })
-    });
+    try {
+      const email = ((document.getElementById(emailFieldId) as HTMLInputElement | null)?.value ?? '').trim();
+      const payment = await api<PaymentResponse>(`/links/${slug}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ email })
+      });
 
-    setPollingReference(payment.reference);
+      setPollingReference(payment.reference);
 
-    if (payment.authorization_url) {
-      window.location.href = payment.authorization_url;
-    } else {
-      setPaymentReference(payment.reference);
+      if (payment.authorization_url) {
+        window.location.href = payment.authorization_url;
+      } else {
+        setPaymentReference(payment.reference);
+      }
+    } catch (error) {
+      alert(formatApiError(error));
     }
   }
 
@@ -93,19 +97,27 @@ export function RegistrationPage() {
       if (file?.size) body.append(fieldName, file);
     }
 
-    await api(`/links/${slug}/registrations`, { method: 'POST', body });
-    localStorage.removeItem(`nerd_registration_draft_${slug}`);
-    setSubmitted(true);
+    try {
+      await api(`/links/${slug}/registrations`, { method: 'POST', body });
+      localStorage.removeItem(`nerd_registration_draft_${slug}`);
+      setSubmitted(true);
+    } catch (error) {
+      alert(formatApiError(error));
+    }
   }
 
   async function loadWorkerRegistrations() {
-    const passcodeField = document.querySelector('input[name="worker-passcode"]') as HTMLInputElement | null;
-    const records = await api<Registration[]>(`/links/${slug}/worker-registrations`, {
-      method: 'POST',
-      body: JSON.stringify({ passcode: passcodeField?.value ?? '' })
-    });
+    try {
+      const passcodeField = document.querySelector('input[name="worker-passcode"]') as HTMLInputElement | null;
+      const records = await api<Registration[]>(`/links/${slug}/worker-registrations`, {
+        method: 'POST',
+        body: JSON.stringify({ passcode: passcodeField?.value ?? '' })
+      });
 
-    setWorkerRegistrations(records);
+      setWorkerRegistrations(records);
+    } catch (error) {
+      alert(formatApiError(error));
+    }
   }
 
   const requiredDocuments = documentFields;
@@ -213,9 +225,9 @@ export function RegistrationPage() {
         <div className="form-section">
           <FieldGroup title="Academic Data" fields={academicFields} />
           <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-            <label htmlFor={emailFieldId}>
+            <label>
               Programme Category
-              <input id={emailFieldId} name="programmeCategory" value="UNDERGRADUATE" readOnly />
+              <input name="programmeCategory" value="UNDERGRADUATE" readOnly />
             </label>
           </div>
         </div>
@@ -235,7 +247,7 @@ export function RegistrationPage() {
           {documentFields.map(([name, label]) => (
             <label key={name} htmlFor={name} style={{ marginBottom: '0.75rem' }}>
               {label}
-              <input id={name} name={name} type="file" />
+              <input id={name} name={name} type="file" required />
             </label>
           ))}
         </div>
@@ -286,4 +298,14 @@ function buildRegistrationPayload(formData: FormData) {
     supervisor: section(personFields, 'supervisor'),
     hod: section(personFields, 'hod')
   };
+}
+
+function formatApiError(error: unknown) {
+  if (typeof error === 'object' && error !== null) {
+    const apiError = error as { message?: unknown; errors?: unknown };
+    const details = Array.isArray(apiError.errors) ? `: ${apiError.errors.join(', ')}` : '';
+    if (typeof apiError.message === 'string') return `${apiError.message}${details}`;
+  }
+
+  return 'Request failed. Please try again.';
 }
