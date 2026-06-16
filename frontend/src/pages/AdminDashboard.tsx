@@ -102,16 +102,25 @@ export function AdminLayout() {
   return (
     <>
       <button
-        className="menu-toggle"
-        onClick={() => setSidebarOpen((v) => !v)}
-        aria-label="Toggle menu"
+        className="menu-opener"
+        onClick={() => setSidebarOpen(true)}
+        aria-label="Open menu"
       >
-        {sidebarOpen ? '✕' : '☰'}
+        ☰
       </button>
       {sidebarOpen && <div className="sidebar-backdrop open" onClick={() => setSidebarOpen(false)} />}
       <div style={{ display: 'flex' }}>
         <aside className={`sidebar${sidebarOpen ? ' open' : ''}`}>
-          <div className="sidebar-logo">AB HUB Admin</div>
+          <div className="sidebar-logo">
+            <span>AB HUB Admin</span>
+            <button
+              className="menu-toggle"
+              onClick={() => setSidebarOpen(false)}
+              aria-label="Close menu"
+            >
+              ✕
+            </button>
+          </div>
           <nav>
             {NAV_ITEMS.map(({ key, label }) => (
               <button
@@ -135,13 +144,15 @@ export function AdminLayout() {
         </aside>
 
         <main className="dashboard">
-          {loading ? (
+          {tab === 'overview' && loading ? (
+            <DashboardHomeLoader />
+          ) : loading ? (
             <Skeleton />
           ) : (
             <>
               {tab === 'overview'      && overview && <OverviewPanel overview={overview} analytics={dailyAnalytics} />}
               {tab === 'links'         && <WorkerLinksPanel links={links} reload={loadDashboard} onChangePage={changeLinksPage} />}
-              {tab === 'registrations' && <RegistrationsPanel registrations={registrations} links={links.items} reload={loadDashboard} onChangePage={changeRegistrationsPage} />}
+              {tab === 'registrations' && <RegistrationsPanel registrations={registrations} links={links.items ?? []} reload={loadDashboard} onChangePage={changeRegistrationsPage} />}
               {tab === 'settings'      && <SettingsPanel fee={fee} setFee={setFee} />}
             </>
           )}
@@ -359,6 +370,15 @@ function WorkerLinksPanel({
     }
   }
 
+  async function copyRegistrationLink(link: WorkerLink) {
+    try {
+      await navigator.clipboard.writeText(link.url);
+      alert('Registration link copied');
+    } catch {
+      window.prompt('Copy registration link', link.url);
+    }
+  }
+
   async function downloadPdf(linkId: string) {
     const link = links.items.find((l) => l._id === linkId);
     if (!link) return;
@@ -374,28 +394,27 @@ function WorkerLinksPanel({
     const doc = new jsPDF();
     let y = 16;
 
+    function writePdfRow(label: string, value: string) {
+      const lines = doc.splitTextToSize(value, 126);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${label}:`, 14, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(lines, 70, y);
+      y += Math.max(lines.length, 1) * 7;
+    }
+
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
     doc.text('Worker Link', 14, y);
     y += 10;
 
     doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    const rows: [string, string][] = [
-      ['Passcode', String(passcode ?? '')],
-      ['Worker', String(link.workerFullName ?? '')],
-      ['Status', link.isRevoked ? 'Revoked' : 'Active'],
-      ['Registrations', String(link.registrationCount ?? 0)],
-      ['Created', String(new Date(link.createdAt).toLocaleString() ?? '')],
-    ];
-
-    for (const [label, value] of rows) {
-      doc.setFont('helvetica', 'bold');
-      doc.text(`${label}:`, 14, y);
-      doc.setFont('helvetica', 'normal');
-      doc.text(String(value), 70, y);
-      y += 7;
-    }
+    writePdfRow('Passcode', String(passcode ?? ''));
+    writePdfRow('Registration link', link.url ?? '');
+    writePdfRow('Worker', String(link.workerFullName ?? ''));
+    writePdfRow('Status', link.isRevoked ? 'Revoked' : 'Active');
+    writePdfRow('Registrations', String(link.registrationCount ?? 0));
+    writePdfRow('Created', String(new Date(link.createdAt).toLocaleString() ?? ''));
 
     doc.save(`worker-link-${link.workerFullName.replace(/\s+/g, '-').toLowerCase()}.pdf`);
   }
@@ -485,15 +504,16 @@ function WorkerLinksPanel({
                   </td>
                   <td style={{ color: 'var(--text-secondary)' }}>{link.registrationCount}</td>
                   <td>
-                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                       <button className="ghost" onClick={() => toggleRevoke(link)}>
-                         {link.isRevoked ? 'Restore' : 'Revoke'}
-                       </button>
-                       <button className="ghost" onClick={() => resetPasscode(link)} disabled={resettingId === link._id}>
-                         {resettingId === link._id ? 'Resetting…' : 'Reset passcode'}
-                       </button>
-                       <button className="ghost" onClick={() => downloadPdf(link._id)}>PDF</button>
-                     </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button className="ghost" onClick={() => toggleRevoke(link)}>
+                          {link.isRevoked ? 'Restore' : 'Revoke'}
+                        </button>
+                        <button className="ghost" onClick={() => resetPasscode(link)} disabled={resettingId === link._id}>
+                          {resettingId === link._id ? 'Resetting…' : 'Reset passcode'}
+                        </button>
+                        <button className="ghost" onClick={() => copyRegistrationLink(link)}>Copy link</button>
+                        <button className="ghost" onClick={() => downloadPdf(link._id)}>PDF</button>
+                      </div>
                   </td>
                 </tr>
               ))
@@ -577,7 +597,7 @@ function RegistrationsPanel({
             style={{ maxWidth: '240px' }}
           >
             <option value="">All workers</option>
-            {links.items.map((link) => (
+            {links.map((link) => (
               <option key={link._id} value={link._id}>{link.workerFullName}</option>
             ))}
           </select>
@@ -737,6 +757,15 @@ function Metric({ label, value }: { label: string; value: number }) {
     <div className="metric">
       <span>{label}</span>
       <b>{value.toLocaleString()}</b>
+    </div>
+  );
+}
+
+function DashboardHomeLoader() {
+  return (
+    <div className="dashboard-loader">
+      <div className="loader-spinner" aria-hidden="true" />
+      <span>Loading dashboard...</span>
     </div>
   );
 }

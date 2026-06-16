@@ -1,5 +1,21 @@
 export const API_URL = 'http://localhost:4000/api';
 
+const INVALID_ADMIN_TOKEN_MESSAGE = 'Invalid admin token';
+
+function redirectToLogin() {
+  localStorage.removeItem('token');
+  window.location.href = '/';
+}
+
+function isInvalidAdminToken(error: unknown) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    (error as { message?: unknown }).message === INVALID_ADMIN_TOKEN_MESSAGE
+  );
+}
+
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem('token');
   const isFormData = options.body instanceof FormData;
@@ -20,6 +36,11 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
     } catch {
       error = { message: text || 'Request failed' };
     }
+
+    if (isInvalidAdminToken(error)) {
+      redirectToLogin();
+    }
+
     throw error;
   }
 
