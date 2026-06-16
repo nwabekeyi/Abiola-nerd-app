@@ -8,5 +8,8 @@ export const env = {
   adminPassword: process.env.ADMIN_PASSWORD ?? 'admin12345',
   appUrl: process.env.APP_URL ?? 'http://localhost:5173',
   paystackSecretKey: process.env.PAYSTACK_SECRET_KEY ?? '',
-  cloudinaryUrl: process.env.CLOUDINARY_URL ?? ''
+  cloudinaryUrl: process.env.CLOUDINARY_URL ?? '',
+  cloudinaryCloudName: process.env.CLOUDINARY_CLOUD_NAME ?? '',
+  cloudinaryApiKey: process.env.CLOUDINARY_API_KEY ?? '',
+  cloudinaryApiSecret: process.env.CLOUDINARY_API_SECRET ?? ''
 };

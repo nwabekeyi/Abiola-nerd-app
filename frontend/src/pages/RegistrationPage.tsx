@@ -19,9 +19,22 @@ type PublicLink = {
 
 type PaymentResponse = {
   reference: string;
-  authorization_url?: string;
-  access_code?: string;
+  access_code: string;
+  authorization_url: string;
+  amount: number;
 };
+
+type PaystackPopup = {
+  resumeTransaction: (accessCode: string) => void;
+};
+
+declare global {
+  interface Window {
+    PaystackPop?: new () => PaystackPopup;
+  }
+}
+
+const PAYSTACK_INLINE_SCRIPT_URL = 'https://js.paystack.co/v2/inline.js';
 
 const STORAGE_KEY = 'nerd_registration_draft';
 
@@ -61,21 +74,29 @@ export function RegistrationPage() {
     return () => clearInterval(timer);
   }, [pollingReference, slug]);
 
-  const emailFieldId = slug ? `emailAddress_${slug}` : 'emailAddress';
+  const emailFieldId = 'emailAddress';
 
   async function initializePayment() {
-    const email = ((document.getElementById(emailFieldId) as HTMLInputElement | null)?.value ?? '').trim();
-    const payment = await api<PaymentResponse>(`/links/${slug}/payments`, {
-      method: 'POST',
-      body: JSON.stringify({ email })
-    });
+    try {
+      const email = ((document.getElementById(emailFieldId) as HTMLInputElement | null)?.value ?? '').trim();
+      const payment = await api<PaymentResponse>(`/links/${slug}/payments`, {
+        method: 'POST',
+        body: JSON.stringify({ email })
+      });
 
-    setPollingReference(payment.reference);
+      await loadPaystackInlineScript();
 
-    if (payment.authorization_url) {
-      window.location.href = payment.authorization_url;
-    } else {
+      if (!window.PaystackPop) throw new Error('Paystack checkout could not be loaded');
+      if (!payment.access_code) throw new Error('Payment access code was not returned');
+
+      setPollingReference(payment.reference);
       setPaymentReference(payment.reference);
+      setPaymentStatus('pending');
+
+      const popup = new window.PaystackPop();
+      popup.resumeTransaction(payment.access_code);
+    } catch (error) {
+      alert(formatApiError(error));
     }
   }
 
@@ -93,19 +114,27 @@ export function RegistrationPage() {
       if (file?.size) body.append(fieldName, file);
     }
 
-    await api(`/links/${slug}/registrations`, { method: 'POST', body });
-    localStorage.removeItem(`nerd_registration_draft_${slug}`);
-    setSubmitted(true);
+    try {
+      await api(`/links/${slug}/registrations`, { method: 'POST', body });
+      localStorage.removeItem(`nerd_registration_draft_${slug}`);
+      setSubmitted(true);
+    } catch (error) {
+      alert(formatApiError(error));
+    }
   }
 
   async function loadWorkerRegistrations() {
-    const passcodeField = document.querySelector('input[name="worker-passcode"]') as HTMLInputElement | null;
-    const records = await api<Registration[]>(`/links/${slug}/worker-registrations`, {
-      method: 'POST',
-      body: JSON.stringify({ passcode: passcodeField?.value ?? '' })
-    });
+    try {
+      const passcodeField = document.querySelector('input[name="worker-passcode"]') as HTMLInputElement | null;
+      const records = await api<Registration[]>(`/links/${slug}/worker-registrations`, {
+        method: 'POST',
+        body: JSON.stringify({ passcode: passcodeField?.value ?? '' })
+      });
 
-    setWorkerRegistrations(records);
+      setWorkerRegistrations(records);
+    } catch (error) {
+      alert(formatApiError(error));
+    }
   }
 
   const requiredDocuments = documentFields;
@@ -213,9 +242,9 @@ export function RegistrationPage() {
         <div className="form-section">
           <FieldGroup title="Academic Data" fields={academicFields} />
           <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-            <label htmlFor={emailFieldId}>
+            <label>
               Programme Category
-              <input id={emailFieldId} name="programmeCategory" value="UNDERGRADUATE" readOnly />
+              <input name="programmeCategory" value="UNDERGRADUATE" readOnly />
             </label>
           </div>
         </div>
@@ -235,7 +264,7 @@ export function RegistrationPage() {
           {documentFields.map(([name, label]) => (
             <label key={name} htmlFor={name} style={{ marginBottom: '0.75rem' }}>
               {label}
-              <input id={name} name={name} type="file" />
+              <input id={name} name={name} type="file" required />
             </label>
           ))}
         </div>
@@ -286,4 +315,35 @@ function buildRegistrationPayload(formData: FormData) {
     supervisor: section(personFields, 'supervisor'),
     hod: section(personFields, 'hod')
   };
+}
+
+function formatApiError(error: unknown) {
+  if (typeof error === 'object' && error !== null) {
+    const apiError = error as { message?: unknown; errors?: unknown };
+    const details = Array.isArray(apiError.errors) ? `: ${apiError.errors.join(', ')}` : '';
+    if (typeof apiError.message === 'string') return `${apiError.message}${details}`;
+  }
+
+  return 'Request failed. Please try again.';
+}
+
+function loadPaystackInlineScript() {
+  if (window.PaystackPop) return Promise.resolve();
+
+  const existingScript = document.querySelector<HTMLScriptElement>(`script[src="${PAYSTACK_INLINE_SCRIPT_URL}"]`);
+  if (existingScript) {
+    return new Promise<void>((resolve, reject) => {
+      existingScript.addEventListener('load', () => resolve(), { once: true });
+      existingScript.addEventListener('error', () => reject(new Error('Unable to load Paystack checkout')), { once: true });
+    });
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = PAYSTACK_INLINE_SCRIPT_URL;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Unable to load Paystack checkout'));
+    document.body.appendChild(script);
+  });
 }
