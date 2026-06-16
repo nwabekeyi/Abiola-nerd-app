@@ -10,8 +10,10 @@ import { Setting } from '../models/Setting.js';
 import { uploadDocument } from '../services/cloudinary.js';
 import { initializePaystack, verifyPaystack } from '../services/paystack.js';
 import { recomputeAnalytics } from '../services/analytics.js';
+import { registrationPayloadSchema } from '../validators/registrationSchemas.js';
 
 const referenceGenerator = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 18);
+const requiredDocumentFields = ['passport', 'ninPicture', 'result', 'certificationPage', 'projectPdf'];
 
 export async function getPublicLink(req: Request, res: Response) {
   const link = await RegistrationLink.findOne({ slug: req.params.slug });
@@ -46,6 +48,29 @@ export async function submitRegistration(req: Request, res: Response) {
 
   try {
     let createdRegistration: unknown;
+    const payload = JSON.parse(req.body.payload);
+    const { error, value: validatedPayload } = registrationPayloadSchema.validate(payload, {
+      abortEarly: false,
+      stripUnknown: true
+    });
+
+    if (error) {
+      return res.status(422).json({
+        message: 'Validation failed',
+        errors: error.details.map((detail) => detail.message)
+      });
+    }
+
+    const files = ((req.files as Express.Multer.File[]) || []).filter((file) => file.size > 0);
+    const uploadedFieldNames = new Set(files.map((file) => file.fieldname));
+    const missingDocuments = requiredDocumentFields.filter((field) => !uploadedFieldNames.has(field));
+
+    if (missingDocuments.length > 0) {
+      return res.status(422).json({
+        message: 'Validation failed',
+        errors: missingDocuments.map((field) => `${field} document is required`)
+      });
+    }
 
     await session.withTransaction(async () => {
       const link = await RegistrationLink.findOne({ slug: req.params.slug, isRevoked: false }).session(session);
@@ -62,7 +87,7 @@ export async function submitRegistration(req: Request, res: Response) {
       await payment.save({ session });
 
       const documents = [];
-      for (const file of (req.files as Express.Multer.File[]) || []) {
+      for (const file of files) {
         const uploaded = await uploadDocument(file, `nerd/${link.slug}`);
         documents.push({
           kind: file.fieldname,
@@ -72,9 +97,8 @@ export async function submitRegistration(req: Request, res: Response) {
         });
       }
 
-      const payload = JSON.parse(req.body.payload);
       const [registration] = await Registration.create(
-        [{ link: link.id, payment: payment.id, ...payload, documents }],
+        [{ link: link.id, payment: payment.id, ...validatedPayload, documents }],
         { session }
       );
 
