@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
 import { customAlphabet } from 'nanoid';
-import { env } from '../config/env.js';
 import { RegistrationLink } from '../models/Link.js';
 import { Payment } from '../models/Payment.js';
 import { Registration } from '../models/Registration.js';
@@ -11,6 +10,24 @@ import { uploadDocument } from '../services/cloudinary.js';
 import { initializePaystack, verifyPaystack } from '../services/paystack.js';
 import { recomputeAnalytics } from '../services/analytics.js';
 import { registrationPayloadSchema } from '../validators/registrationSchemas.js';
+
+function formatHumanDate(value: unknown) {
+  if (!value) return value;
+  const date = new Date(value as string | number | Date);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
+}
+
+function formatRegistration(registration: any) {
+  const item = typeof registration.toObject === 'function' ? registration.toObject() : registration;
+  return {
+    ...item,
+    personal: {
+      ...item.personal,
+      dateOfBirth: formatHumanDate(item.personal?.dateOfBirth)
+    }
+  };
+}
 
 const referenceGenerator = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ', 18);
 const requiredDocumentFields = ['passport', 'ninPicture', 'result', 'certificationPage', 'projectPdf'];
@@ -40,7 +57,6 @@ export async function initializePayment(req: Request, res: Response) {
       req.body.email,
       amount,
       reference,
-      `${env.appUrl}/register/${link.slug}/payment`
     );
 
     await Payment.create({ link: link.id, email: req.body.email, amount, reference: payment.reference || reference });
@@ -145,7 +161,7 @@ export async function workerRegistrations(req: Request, res: Response) {
     }
 
     const registrations = await Registration.find({ link: link.id }).select('-documents.publicId').sort('-createdAt');
-    return res.json(registrations);
+    return res.json(registrations.map(formatRegistration));
   } catch (error) {
     return res.status(500).json({ message: error instanceof Error ? error.message : 'Failed to fetch registrations' });
   }

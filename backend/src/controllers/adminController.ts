@@ -8,6 +8,28 @@ import { Setting } from '../models/Setting.js';
 import { env } from '../config/env.js';
 import { recomputeAnalytics } from '../services/analytics.js';
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function formatHumanDate(value: unknown) {
+  if (!value) return value;
+  const date = new Date(value as string | number | Date);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
+}
+
+function formatRegistration(registration: any) {
+  const item = typeof registration.toObject === 'function' ? registration.toObject() : registration;
+  return {
+    ...item,
+    personal: {
+      ...item.personal,
+      dateOfBirth: formatHumanDate(item.personal?.dateOfBirth)
+    }
+  };
+}
+
 const passcodeGenerator = customAlphabet('ABCDEFGHJKLMNPQRSTUVWXYZ23456789', 8);
 const slugGenerator = customAlphabet('abcdefghijklmnopqrstuvwxyz0123456789', 10);
 
@@ -80,7 +102,7 @@ export async function listLinks(req: Request, res: Response) {
 
     const query: Record<string, unknown> = {};
     if (search) {
-      query.workerFullName = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      query.workerFullName = new RegExp(escapeRegExp(search), 'i');
     }
 
     const [items, total] = await Promise.all([
@@ -153,8 +175,26 @@ export async function listRegistrations(req: Request, res: Response) {
     const query: Record<string, unknown> = {};
     if (req.query.link) query.link = req.query.link;
     if (req.query.status) query.status = req.query.status;
+
+    const dateQuery: Record<string, Date> = {};
+    if (req.query.dateFrom) {
+      const from = new Date(String(req.query.dateFrom));
+      if (!Number.isNaN(from.getTime())) {
+        from.setHours(0, 0, 0, 0);
+        dateQuery.$gte = from;
+      }
+    }
+    if (req.query.dateTo) {
+      const to = new Date(String(req.query.dateTo));
+      if (!Number.isNaN(to.getTime())) {
+        to.setHours(23, 59, 59, 999);
+        dateQuery.$lte = to;
+      }
+    }
+    if (Object.keys(dateQuery).length) query.createdAt = dateQuery;
+
     if (req.query.search) {
-      const search = new RegExp(String(req.query.search), 'i');
+      const search = new RegExp(escapeRegExp(String(req.query.search)), 'i');
       query.$or = [
         { 'personal.firstName': search },
         { 'personal.surname': search },
@@ -169,7 +209,7 @@ export async function listRegistrations(req: Request, res: Response) {
     ]);
 
     res.json({
-      items,
+      items: items.map(formatRegistration),
       total,
       page,
       limit,

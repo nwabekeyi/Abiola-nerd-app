@@ -1,12 +1,12 @@
 import { env } from '../config/env.js';
 
-export async function initializePaystack(email: string, amount: number, reference: string, callbackUrl: string) {
+export async function initializePaystack(email: string, amount: number, reference: string) {
   if (!env.paystackSecretKey) throw new Error('Paystack secret key is not configured');
 
   const res = await fetch('https://api.paystack.co/transaction/initialize', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.paystackSecretKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, amount: amount * 100, reference, callback_url: callbackUrl })
+    body: JSON.stringify({ email, amount: amount * 100, reference })
   });
   const json = await res.json();
 
