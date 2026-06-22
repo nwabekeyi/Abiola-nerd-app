@@ -68,6 +68,8 @@ export function RegistrationPage() {
   const [workerRegistrations, setWorkerRegistrations] = useState<Registration[]>([]);
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [initializingPayment, setInitializingPayment] = useState(false);
+  const [loadingWorkerRegistrations, setLoadingWorkerRegistrations] = useState(false);
   const [isFormComplete, setIsFormComplete] = useState(false);
 
   useEffect(() => {
@@ -135,10 +137,12 @@ export function RegistrationPage() {
   }, [slug, link, submitted]);
 
   async function initializePayment() {
+    if (initializingPayment) return;
     if (!isFormComplete) {
       alert('Please fill all required fields and upload all required documents before proceeding with payment.');
       return;
     }
+    setInitializingPayment(true);
     try {
       const email = ((document.getElementById(emailFieldId) as HTMLInputElement | null)?.value ?? '').trim();
       const payment = await api<PaymentResponse>(`/links/${slug}/payments`, {
@@ -163,6 +167,8 @@ export function RegistrationPage() {
       }
     } catch (error) {
       alert(formatApiError(error));
+    } finally {
+      setInitializingPayment(false);
     }
   }
 
@@ -194,6 +200,8 @@ export function RegistrationPage() {
   }
 
   async function loadWorkerRegistrations() {
+    if (loadingWorkerRegistrations) return;
+    setLoadingWorkerRegistrations(true);
     try {
       const passcodeField = document.querySelector('input[name="worker-passcode"]') as HTMLInputElement | null;
       const records = await api<Registration[]>(`/links/${slug}/worker-registrations`, {
@@ -204,6 +212,8 @@ export function RegistrationPage() {
       setWorkerRegistrations(records);
     } catch (error) {
       alert(formatApiError(error));
+    } finally {
+      setLoadingWorkerRegistrations(false);
     }
   }
 
@@ -275,7 +285,7 @@ export function RegistrationPage() {
           <h3 style={{ marginBottom: '1rem' }}>Worker Registrations</h3>
           <div className="toolbar">
             <input name="worker-passcode" placeholder="Enter worker passcode" type="password" />
-            <button type="button" onClick={loadWorkerRegistrations} className="primary">View Registrations</button>
+            <button type="button" onClick={loadWorkerRegistrations} className="primary" disabled={loadingWorkerRegistrations}>{loadingWorkerRegistrations ? 'Loading…' : 'View Registrations'}</button>
           </div>
           {workerRegistrations.length === 0 ? (
             <p style={{ color: 'var(--text-muted)', padding: '1rem 0' }}>No registrations yet</p>
@@ -411,8 +421,8 @@ export function RegistrationPage() {
             </p>
           )}
           {!pollingReference && (
-            <button type="button" onClick={initializePayment} className="primary" disabled={!isFormComplete}>
-              Initialize Payment
+            <button type="button" onClick={initializePayment} className="primary" disabled={!isFormComplete || initializingPayment}>
+              {initializingPayment ? 'Initializing payment…' : 'Initialize Payment'}
             </button>
           )}
           {!pollingReference && !isFormComplete && (

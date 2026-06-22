@@ -25,6 +25,14 @@ type Page<T> = {
 
 type Tab = 'overview' | 'links' | 'registrations' | 'settings';
 
+type RegistrationFilters = {
+  search?: string;
+  link?: string;
+  status?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
 type DailyAnalytics = {
   month: string;
   enrollmentsSeries: Array<{ date: string; enrollments: number; workers: number; paymentAmount: number }>;
@@ -49,6 +57,8 @@ export function AdminLayout() {
   const [fee, setFee] = useState(0);
   const [dailyAnalytics, setDailyAnalytics] = useState<DailyAnalytics>(EMPTY_DAILY_ANALYTICS);
   const [loading, setLoading] = useState(true);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [registrationsLoading, setRegistrationsLoading] = useState(false);
 
   async function loadDashboard() {
     try {
@@ -73,16 +83,31 @@ export function AdminLayout() {
   }
 
   async function changeLinksPage(page: number, limit = links.limit, search = '') {
-    const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
-    if (search.trim()) qs.set('search', search.trim());
-    const data = await api<Page<WorkerLink>>(`/admin/links?${qs.toString()}`);
-    setLinks(data);
+    setLinksLoading(true);
+    try {
+      const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (search.trim()) qs.set('search', search.trim());
+      const data = await api<Page<WorkerLink>>(`/admin/links?${qs.toString()}`);
+      setLinks(data);
+    } finally {
+      setLinksLoading(false);
+    }
   }
 
-  async function changeRegistrationsPage(page: number, limit = registrations.limit) {
-    const qs = new URLSearchParams({ page: String(page), limit: String(limit) }).toString();
-    const data = await api<Page<Registration>>(`/admin/registrations?${qs}`);
-    setRegistrations(data);
+  async function changeRegistrationsPage(page: number, limit = registrations.limit, filters: RegistrationFilters = {}) {
+    setRegistrationsLoading(true);
+    try {
+      const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (filters.search?.trim()) qs.set('search', filters.search.trim());
+      if (filters.link) qs.set('link', filters.link);
+      if (filters.status) qs.set('status', filters.status);
+      if (filters.dateFrom) qs.set('dateFrom', filters.dateFrom);
+      if (filters.dateTo) qs.set('dateTo', filters.dateTo);
+      const data = await api<Page<Registration>>(`/admin/registrations?${qs.toString()}`);
+      setRegistrations(data);
+    } finally {
+      setRegistrationsLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -151,8 +176,8 @@ export function AdminLayout() {
           ) : (
             <>
               {tab === 'overview'      && overview && <OverviewPanel overview={overview} analytics={dailyAnalytics} />}
-              {tab === 'links'         && <WorkerLinksPanel links={links} reload={loadDashboard} onChangePage={changeLinksPage} />}
-              {tab === 'registrations' && <RegistrationsPanel registrations={registrations} links={links.items ?? []} reload={loadDashboard} onChangePage={changeRegistrationsPage} />}
+              {tab === 'links'         && <WorkerLinksPanel links={links} loading={linksLoading} reload={loadDashboard} onChangePage={changeLinksPage} />}
+              {tab === 'registrations' && <RegistrationsPanel registrations={registrations} loading={registrationsLoading} links={links.items ?? []} reload={loadDashboard} onChangePage={changeRegistrationsPage} />}
               {tab === 'settings'      && <SettingsPanel fee={fee} setFee={setFee} />}
             </>
           )}
@@ -326,16 +351,19 @@ function OverviewPanel({ overview, analytics }: { overview: Overview; analytics:
 /* ─── Worker links ───────────────────────────────────────────────────────── */
 function WorkerLinksPanel({
   links,
+  loading,
   reload,
   onChangePage,
 }: {
   links: Page<WorkerLink>;
+  loading: boolean;
   reload: () => Promise<void>;
   onChangePage: (page: number, limit?: number, search?: string) => Promise<void>;
 }) {
   const [workerFullName, setWorkerFullName] = useState('');
   const [workerSearch, setWorkerSearch] = useState('');
   const [resettingId, setResettingId] = useState<string | null>(null);
+  const [creatingLink, setCreatingLink] = useState(false);
 
   const filtered = workerSearch.trim()
     ? links.items.filter((l) => l.workerFullName.toLowerCase().includes(workerSearch.trim().toLowerCase()))
@@ -347,13 +375,19 @@ function WorkerLinksPanel({
 
   async function createLink(e: React.FormEvent) {
     e.preventDefault();
-    const created = await api<WorkerLink & { passcode: string }>('/admin/links', {
+    if (creatingLink) return;
+    setCreatingLink(true);
+    try {
+      const created = await api<WorkerLink & { passcode: string }>('/admin/links', {
       method: 'POST',
       body: JSON.stringify({ workerFullName }),
     });
-    alert(`Link created — passcode: ${created.passcode}`);
-    setWorkerFullName('');
-    reload();
+      alert(`Link created — passcode: ${created.passcode}`);
+      setWorkerFullName('');
+      reload();
+    } finally {
+      setCreatingLink(false);
+    }
   }
 
   async function resetPasscode(link: WorkerLink) {
@@ -446,7 +480,7 @@ function WorkerLinksPanel({
             />
           </div>
           <div style={{ alignSelf: 'flex-end' }}>
-            <button type="submit" className="primary">Create link</button>
+            <button type="submit" className="primary" disabled={creatingLink}>{creatingLink ? 'Creating…' : 'Create link'}</button>
           </div>
         </form>
       </div>
@@ -462,7 +496,7 @@ function WorkerLinksPanel({
             placeholder="Search workers by name"
             style={{ maxWidth: '280px' }}
           />
-          <button className="secondary" type="button" onClick={applySearch}>Search</button>
+          <button className="secondary" type="button" onClick={applySearch} disabled={loading}>{loading ? 'Searching…' : 'Search'}</button>
           <select
             value={links.limit}
             onChange={async (e) => {
@@ -523,7 +557,7 @@ function WorkerLinksPanel({
         <div style={{ padding: '0.75rem 1rem', borderTop: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button
             className="secondary"
-            disabled={links.page <= 1}
+            disabled={links.page <= 1 || loading}
             onClick={async () => {
               await onChangePage(links.page - 1);
             }}
@@ -533,7 +567,7 @@ function WorkerLinksPanel({
           </span>
           <button
             className="secondary"
-            disabled={links.page >= links.pages}
+            disabled={links.page >= links.pages || loading}
             onClick={async () => {
               await onChangePage(links.page + 1);
             }}
@@ -547,31 +581,37 @@ function WorkerLinksPanel({
 /* ─── Registrations ──────────────────────────────────────────────────────── */
 function RegistrationsPanel({
   registrations,
+  loading,
   links,
   reload,
   onChangePage,
 }: {
   registrations: Page<Registration>;
+  loading: boolean;
   links: WorkerLink[];
   reload: () => Promise<void>;
-  onChangePage: (page: number) => Promise<void>;
+  onChangePage: (page: number, limit?: number, filters?: RegistrationFilters) => Promise<void>;
 }) {
   const [linkFilter, setLinkFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [selected, setSelected] = useState<Registration | null>(null);
 
-  const visible = (() => {
-    let list = registrations.items;
-    if (linkFilter) list = list.filter((r) => r.link?._id === linkFilter);
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      list = list.filter((r) => {
-        const name = `${r.personal?.firstName ?? ''} ${r.personal?.surname ?? ''}`.toLowerCase();
-        return name.includes(q) || (r.contact?.emailAddress ?? '').toLowerCase().includes(q) || (r.academic?.matriculationNumber ?? '').toLowerCase().includes(q);
-      });
-    }
-    return list;
-  })();
+  const visible = registrations.items;
+
+  const currentFilters = (): RegistrationFilters => ({
+    search,
+    link: linkFilter,
+    status: statusFilter,
+    dateFrom,
+    dateTo,
+  });
+
+  const applyFilters = async () => {
+    await onChangePage(1, registrations.limit, currentFilters());
+  };
 
   async function toggleStatus(registration: Registration) {
     await api(`/admin/registrations/${registration._id}/status`, {
@@ -621,12 +661,25 @@ function RegistrationsPanel({
               <option key={link._id} value={link._id}>{link.workerFullName}</option>
             ))}
           </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            style={{ maxWidth: '180px' }}
+          >
+            <option value="">All statuses</option>
+            <option value="completed">Completed</option>
+            <option value="uncompleted">Uncompleted</option>
+          </select>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={async (e) => { if (e.key === 'Enter') await applyFilters(); }}
             placeholder="Search name, email or matric no."
             style={{ maxWidth: '280px' }}
           />
+          <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} aria-label="Registration date from" style={{ maxWidth: '160px' }} />
+          <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} aria-label="Registration date to" style={{ maxWidth: '160px' }} />
+          <button className="secondary" type="button" onClick={applyFilters} disabled={loading}>{loading ? 'Loading…' : 'Apply filters'}</button>
           <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
             Page {registrations.page} of {registrations.pages || 1}
           </span>
@@ -647,7 +700,7 @@ function RegistrationsPanel({
             <tbody>
               {visible.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="empty-state">No registrations found</td>
+                  <td colSpan={6} className="empty-state">{loading ? 'Loading registrations…' : 'No registrations found'}</td>
                 </tr>
               ) : (
                 visible.map((registration) => (
@@ -691,16 +744,16 @@ function RegistrationsPanel({
         <div style={{ padding: '0.75rem 1rem', borderTop: '0.5px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button
             className="secondary"
-            disabled={registrations.page <= 1}
-            onClick={async () => await onChangePage(registrations.page - 1)}
+            disabled={registrations.page <= 1 || loading}
+            onClick={async () => await onChangePage(registrations.page - 1, registrations.limit, currentFilters())}
           >Previous</button>
           <span style={{ color: 'var(--text-muted)', fontSize: '0.8125rem' }}>
             {registrations.total} total
           </span>
           <button
             className="secondary"
-            disabled={registrations.page >= registrations.pages}
-            onClick={async () => await onChangePage(registrations.page + 1)}
+            disabled={registrations.page >= registrations.pages || loading}
+            onClick={async () => await onChangePage(registrations.page + 1, registrations.limit, currentFilters())}
           >Next</button>
         </div>
       </div>
