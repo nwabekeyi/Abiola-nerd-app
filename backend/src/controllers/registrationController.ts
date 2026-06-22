@@ -16,10 +16,14 @@ const referenceGenerator = customAlphabet('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const requiredDocumentFields = ['passport', 'ninPicture', 'result', 'certificationPage', 'projectPdf'];
 
 export async function getPublicLink(req: Request, res: Response) {
-  const link = await RegistrationLink.findOne({ slug: req.params.slug });
+  try {
+    const link = await RegistrationLink.findOne({ slug: req.params.slug });
 
-  if (!link) return res.status(404).json({ message: 'Worker link not found' });
-  return res.json({ id: link.id, workerFullName: link.workerFullName, isRevoked: link.isRevoked });
+    if (!link) return res.status(404).json({ message: 'Worker link not found' });
+    return res.json({ id: link.id, workerFullName: link.workerFullName, isRevoked: link.isRevoked });
+  } catch (error) {
+    return res.status(500).json({ message: error instanceof Error ? error.message : 'Failed to fetch registration link' });
+  }
 }
 
 export async function initializePayment(req: Request, res: Response) {
@@ -121,20 +125,28 @@ export async function submitRegistration(req: Request, res: Response) {
 }
 
 export async function verifyPaymentStatus(req: Request, res: Response) {
-  const reference = String(req.query.reference || '');
-  const payment = await Payment.findOne({ reference });
-  if (!payment) return res.status(404).json({ message: 'Payment not found' });
-  const verified = await verifyPaystack(payment.reference);
-  return res.json({ status: verified.status, reference: payment.reference });
+  try {
+    const reference = String(req.query.reference || '');
+    const payment = await Payment.findOne({ reference });
+    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+    const verified = await verifyPaystack(payment.reference);
+    return res.json({ status: verified.status, reference: payment.reference });
+  } catch (error) {
+    return res.status(400).json({ message: error instanceof Error ? error.message : 'Payment verification failed' });
+  }
 }
 
 export async function workerRegistrations(req: Request, res: Response) {
-  const link = await RegistrationLink.findOne({ slug: req.params.slug });
+  try {
+    const link = await RegistrationLink.findOne({ slug: req.params.slug });
 
-  if (!link || !(await bcrypt.compare(req.body.passcode, link.passcodeHash))) {
-    return res.status(401).json({ message: 'Invalid passcode' });
+    if (!link || !(await bcrypt.compare(req.body.passcode, link.passcodeHash))) {
+      return res.status(401).json({ message: 'Invalid passcode' });
+    }
+
+    const registrations = await Registration.find({ link: link.id }).select('-documents.publicId').sort('-createdAt');
+    return res.json(registrations);
+  } catch (error) {
+    return res.status(500).json({ message: error instanceof Error ? error.message : 'Failed to fetch registrations' });
   }
-
-  const registrations = await Registration.find({ link: link.id }).select('-documents.publicId').sort('-createdAt');
-  return res.json(registrations);
 }

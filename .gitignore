@@ -10,6 +10,8 @@
 node_modules/
 **/node_modules/
 
+**/firebase.config.js
+
 # Kilo folder
 .kilo
 **/.kilo
@@ -23,5 +25,8 @@ dist/
 build/
 .next/
 coverage/
+
+**/.git/
+**/.gitignore/
 
 ./frontend/node_modules/

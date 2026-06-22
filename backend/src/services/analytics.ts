@@ -48,19 +48,24 @@ export async function recomputeAnalytics() {
 }
 
 export async function getAnalytics() {
-  const analytics = await Analytics.findOne({ key: 'main' });
-  if (!analytics) {
-    await recomputeAnalytics();
-    return getAnalytics();
+  try {
+    const analytics = await Analytics.findOne({ key: 'main' });
+    if (!analytics) {
+      await recomputeAnalytics();
+      return getAnalytics();
+    }
+    return {
+      currentMonthRegistrations: analytics.currentMonthRegistrations,
+      currentMonthCompleted: analytics.currentMonthCompleted,
+      currentMonthRevenue: analytics.currentMonthRevenue,
+      totalWorkers: analytics.totalWorkers,
+      totalRegistrations: analytics.totalRegistrations,
+      totalCompleted: analytics.totalCompleted,
+      totalRevenue: analytics.totalRevenue,
+      lastUpdated: analytics.lastUpdated,
+    };
+  } catch (error) {
+    console.error('Failed to get analytics:', error);
+    throw new Error(error instanceof Error ? error.message : 'Failed to load analytics');
   }
-  return {
-    currentMonthRegistrations: analytics.currentMonthRegistrations,
-    currentMonthCompleted: analytics.currentMonthCompleted,
-    currentMonthRevenue: analytics.currentMonthRevenue,
-    totalWorkers: analytics.totalWorkers,
-    totalRegistrations: analytics.totalRegistrations,
-    totalCompleted: analytics.totalCompleted,
-    totalRevenue: analytics.totalRevenue,
-    lastUpdated: analytics.lastUpdated,
-  };
 }

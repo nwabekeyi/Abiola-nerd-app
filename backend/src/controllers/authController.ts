@@ -5,21 +5,29 @@ import { env } from '../config/env.js';
 import { Admin } from '../models/Admin.js';
 
 export async function seedAdmin() {
-  const existingAdmin = await Admin.findOne({ email: env.adminEmail });
-  if (existingAdmin) return;
+  try {
+    const existingAdmin = await Admin.findOne({ email: env.adminEmail });
+    if (existingAdmin) return;
 
-  await Admin.create({
-    email: env.adminEmail,
-    passwordHash: await bcrypt.hash(env.adminPassword, 10)
-  });
+    await Admin.create({
+      email: env.adminEmail,
+      passwordHash: await bcrypt.hash(env.adminPassword, 10)
+    });
+  } catch (error) {
+    console.error('Failed to seed admin:', error);
+  }
 }
 
 export async function login(req: Request, res: Response) {
-  const admin = await Admin.findOne({ email: req.body.email });
+  try {
+    const admin = await Admin.findOne({ email: req.body.email });
 
-  if (!admin || !admin.passwordHash || !(await bcrypt.compare(req.body.password, admin.passwordHash))) {
-    return res.status(401).json({ message: 'Invalid credentials' });
+    if (!admin || !admin.passwordHash || !(await bcrypt.compare(req.body.password, admin.passwordHash))) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+
+    return res.json({ token: jwt.sign({ sub: admin.id }, env.jwtSecret, { expiresIn: '12h' }) });
+  } catch (error) {
+    return res.status(500).json({ message: error instanceof Error ? error.message : 'Login failed' });
   }
-
-  return res.json({ token: jwt.sign({ sub: admin.id }, env.jwtSecret, { expiresIn: '12h' }) });
 }

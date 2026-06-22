@@ -45,6 +45,7 @@ export async function getDailyAnalytics() {
     Payment.aggregate([
       {
         $match: {
+          status: 'success',
           createdAt: { $gte: monthStart, $lt: monthEnd }
         }
       },

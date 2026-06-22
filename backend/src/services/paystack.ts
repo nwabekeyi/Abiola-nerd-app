@@ -10,6 +10,7 @@ export async function initializePaystack(email: string, amount: number, referenc
   });
   const json = await res.json();
 
+  if (!res.ok) throw new Error(json.message || 'Paystack initialization failed');
   if (!json.status) throw new Error(json.message);
   return json.data;
 }
@@ -20,6 +21,7 @@ export async function verifyPaystack(reference: string) {
   const res = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, { headers: { Authorization: `Bearer ${env.paystackSecretKey}` } });
   const json = await res.json();
 
+  if (!res.ok) throw new Error(json.message || 'Paystack verification failed');
   if (!json.status) throw new Error(json.message);
   return json.data;
 }

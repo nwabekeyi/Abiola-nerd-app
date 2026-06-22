@@ -268,6 +268,7 @@ tbody tr:hover { background: var(--bg-raised); }
   border-color: transparent;
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 0.5rem;
 }
 .sidebar nav button:hover:not(:disabled) {

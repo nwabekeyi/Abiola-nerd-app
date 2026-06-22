@@ -558,6 +558,7 @@ function RegistrationsPanel({
 }) {
   const [linkFilter, setLinkFilter] = useState('');
   const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Registration | null>(null);
 
   const visible = (() => {
     let list = registrations.items;
@@ -581,6 +582,25 @@ function RegistrationsPanel({
     });
     reload();
   }
+
+  const renderFieldSection = (title: string, data: Record<string, string> | undefined) => {
+    if (!data) return null;
+    const entries = Object.entries(data).filter(([, v]) => v);
+    if (!entries.length) return null;
+    return (
+      <div style={{ marginBottom: '1rem' }}>
+        <h3 style={{ marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 500 }}>{title}</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem' }}>
+          {entries.map(([key, value]) => (
+            <div key={key} style={{ background: 'var(--bg-body)', padding: '0.5rem 0.75rem', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 500, marginBottom: '0.15rem' }}>{key}</div>
+              <div style={{ color: 'var(--text-primary)', fontSize: '0.875rem', wordBreak: 'break-word' }}>{value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -649,20 +669,17 @@ function RegistrationsPanel({
                       </span>
                     </td>
                     <td>
-                      {registration.documents?.map((doc) => (
-                        <a
-                          key={doc.url}
-                          href={doc.url}
-                          style={{ fontSize: '0.8125rem', marginRight: '0.5rem' }}
-                        >
-                          {doc.kind}
-                        </a>
-                      ))}
+                      <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                        {registration.documents?.length ?? 0} files
+                      </span>
                     </td>
                     <td>
-                      <button className="ghost" onClick={() => toggleStatus(registration)}>
-                        Toggle
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button className="primary" onClick={() => setSelected(registration)} style={{ fontSize: '0.75rem' }}>View</button>
+                        <button className="ghost" onClick={() => toggleStatus(registration)}>
+                          Toggle
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -687,6 +704,40 @@ function RegistrationsPanel({
           >Next</button>
         </div>
       </div>
+      {selected && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={(e) => { if (e.target === e.currentTarget) setSelected(null); }}>
+          <div className="card" style={{ width: 'min(860px, 92vw)', maxHeight: '90vh', overflowY: 'auto', padding: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2>Registration Details</h2>
+              <button className="ghost" onClick={() => setSelected(null)}>Close</button>
+            </div>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', marginBottom: '1rem' }}>
+              Submitted on {new Date(selected.createdAt).toLocaleString()} &nbsp;·&nbsp; Status: <strong>{selected.status}</strong> &nbsp;·&nbsp; Worker: <strong>{selected.link?.workerFullName}</strong>
+            </p>
+            {renderFieldSection('Personal Information', selected.personal)}
+            {renderFieldSection('Contact Information', selected.contact)}
+            {renderFieldSection('Academic Information', selected.academic)}
+            <div style={{ marginBottom: '1rem' }}>
+              <h3 style={{ marginBottom: '0.5rem', color: 'var(--text-secondary)', fontSize: '0.875rem', fontWeight: 500 }}>Documents</h3>
+              {!selected.documents?.length ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>No documents uploaded</p>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '0.5rem' }}>
+                  {selected.documents.map((doc, idx) => (
+                    <div key={idx} style={{ background: 'var(--bg-body)', padding: '0.6rem 0.75rem', borderRadius: 'var(--radius-sm)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+                      <div>
+                        <div style={{ color: 'var(--text-primary)', fontSize: '0.875rem', fontWeight: 500 }}>{doc.kind}</div>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>{doc.originalName}</div>
+                      </div>
+                      <a href={doc.url} target="_blank" rel="noreferrer" className="secondary" style={{ fontSize: '0.75rem', textDecoration: 'none', whiteSpace: 'nowrap' }}>Open</a>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
